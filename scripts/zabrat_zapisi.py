@@ -23,6 +23,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -40,6 +41,16 @@ AUDIO_EXT = {".m4a", ".mp3", ".ogg", ".oga", ".opus", ".wav", ".aac", ".flac",
 DEFAULT_MIN_MINUTES = 3.0
 
 REMOTE_MEDIA = ".nanobot/media/telegram"
+
+# Локальный путь, мимо телеграма: кладёшь запись сюда — расшифровка появляется
+# рядом, исходник уезжает в «готово». Нужен для разговоров, которым нечего
+# делать на чужих серверах: через бот запись и текст дважды проходят телеграм.
+LOCAL_IN = "расшифровать"
+LOCAL_DONE = "готово"
+
+# Файл, который ещё копируется, трогать рано: AirDrop и перетаскивание
+# крупной записи занимают секунды, а размер всё это время растёт.
+SETTLE_SECONDS = 20
 
 
 def load_config() -> dict[str, str]:
@@ -102,6 +113,19 @@ def telegram(config: dict[str, str], method: str, fields: list[tuple[str, str]])
         print(f"телеграм отказал ({method}): {result.stdout[:200]}{result.stderr[:200]}",
               file=sys.stderr)
     return ok
+
+
+def notify(title: str, text: str) -> None:
+    """Баннер макоси. Для локального пути это единственный сигнал: в телеграм
+    тут ничего не уходит намеренно."""
+    try:
+        subprocess.run(
+            ["osascript", "-e",
+             f'display notification {json.dumps(text)} with title {json.dumps(title)}'],
+            capture_output=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
 
 def ssh(config: dict[str, str], command: str) -> subprocess.CompletedProcess[str]:
@@ -203,6 +227,41 @@ def transcribe(audio: Path, work_dir: Path, config: dict[str, str]) -> Path | No
     return produced
 
 
+def process_local(work_dir: Path, config: dict[str, str], dry_run: bool) -> None:
+    """Расшифровать то, что положили в папку руками. Телеграм не участвует."""
+    inbox = work_dir / LOCAL_IN
+    inbox.mkdir(parents=True, exist_ok=True)
+
+    pending = [
+        item for item in sorted(inbox.iterdir())
+        if item.is_file()
+        and item.suffix.lower() in AUDIO_EXT
+        and time.time() - item.stat().st_mtime > SETTLE_SECONDS
+    ]
+    if dry_run:
+        for item in pending:
+            print(f"в папке:     {item.name}")
+        return
+
+    done_dir = work_dir / LOCAL_DONE
+    done_dir.mkdir(parents=True, exist_ok=True)
+
+    for audio in pending:
+        duration = probe_duration(audio) or 0.0
+        produced = transcribe(audio, work_dir, config)
+        if produced is None:
+            notify("Расшифровка не удалась", audio.name)
+            continue
+
+        document = work_dir / f"расшифровка-{audio.stem}.md"
+        document.write_text(build_document(segments_from_json(produced), audio.name, duration))
+        # Исходник убираем из входящей папки, иначе следующий запуск
+        # возьмёт его снова.
+        audio.replace(done_dir / audio.name)
+        notify("Расшифровка готова", document.name)
+        print(f"готово: {document}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Забрать записи из телеграма, расшифровать и вернуть документ.")
@@ -217,6 +276,8 @@ def main() -> None:
     ledger = work_dir / ".сделано"
     done = set(ledger.read_text().split()) if ledger.is_file() else set()
     min_minutes = float(config.get("MIN_MINUTES", DEFAULT_MIN_MINUTES))
+
+    process_local(work_dir, config, args.sukhoy_progon)
 
     fresh = [(name, mtime) for name, mtime in remote_recordings(config) if name not in done]
     if not fresh:
