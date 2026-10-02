@@ -52,24 +52,32 @@ def slugify(name: str) -> str:
     return slug.strip("-")
 
 
-def resolve_project_file(name: str) -> Path:
-    """Путь к карточке проекта с проверкой, что он не вышел за пределы базы.
+def resolve_card(name: str, folder: str) -> Path:
+    """Путь к карточке с проверкой, что он не вышел за пределы базы.
 
-    Имя проекта приходит из ответа модели, то есть косвенно — из текста, который
-    мы не контролируем. Без этой проверки `../../.ssh/id_rsa` стал бы читаемым.
+    Имя приходит из ответа модели, то есть косвенно — из текста, который мы
+    не контролируем. Без этой проверки `../../.ssh/id_rsa` стал бы читаемым.
     """
-    projects = brain_dir() / "projects"
-    candidate = (projects / f"{slugify(name)}.md").resolve()
-    if not candidate.is_relative_to(projects.resolve()):
-        raise ValueError(f"Недопустимое имя проекта: {name!r}")
+    root = (brain_dir() / folder).resolve()
+    candidate = (root / f"{slugify(name)}.md").resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError(f"Недопустимое имя карточки: {name!r}")
     return candidate
 
 
-def known_projects() -> list[str]:
-    projects = brain_dir() / "projects"
-    if not projects.is_dir():
+def resolve_project_file(name: str) -> Path:
+    return resolve_card(name, "projects")
+
+
+def known_cards(folder: str) -> list[str]:
+    root = brain_dir() / folder
+    if not root.is_dir():
         return []
-    return sorted(p.stem for p in projects.glob("*.md"))
+    return sorted(p.stem for p in root.glob("*.md") if not p.stem.startswith("_"))
+
+
+def known_projects() -> list[str]:
+    return known_cards("projects")
 
 
 def read_if_exists(path: Path) -> str | None:
@@ -131,16 +139,28 @@ def whoami() -> str:
     if projects:
         parts.append("## Карточки проектов в базе\n\n" + "\n".join(f"- {p}" for p in projects))
 
+    products = known_cards("products")
+    if products:
+        parts.append("## Карточки функционала продуктов\n\n"
+                     + "\n".join(f"- {p}" for p in products)
+                     + "\n\nЧитать через get_product, когда спрашивают, умеет ли продукт что-то.")
+
     return "\n\n---\n\n".join(parts)
 
 
 @mcp.tool()
 def list_projects() -> str:
-    """Имена всех карточек проектов в базе знаний."""
+    """Имена карточек проектов и карточек функционала продуктов."""
     projects = known_projects()
-    if not projects:
-        return "Карточек проектов пока нет."
-    return "\n".join(f"- {p}" for p in projects)
+    products = known_cards("products")
+    blocks = []
+    if projects:
+        blocks.append("Проекты (get_project) — решения, люди, зависимости:\n"
+                      + "\n".join(f"- {p}" for p in projects))
+    if products:
+        blocks.append("Продукты (get_product) — что умеет, в каком состоянии:\n"
+                      + "\n".join(f"- {p}" for p in products))
+    return "\n\n".join(blocks) if blocks else "Карточек пока нет."
 
 
 @mcp.tool()
@@ -156,6 +176,26 @@ def get_project(name: str) -> str:
         available = known_projects()
         hint = "\n".join(f"- {p}" for p in available) if available else "(пусто)"
         return f"Карточки {name!r} нет. Что есть:\n{hint}"
+    return content
+
+
+@mcp.tool()
+def get_product(name: str) -> str:
+    """Функционал продукта: что он умеет, в каком состоянии, с какой версии.
+
+    Читать, когда спрашивают «есть ли у нас X», готовят ответ заказчику или
+    разбирают требования закупки. Статусы: есть, частично, в работе, план, нет,
+    уточнить.
+
+    `уточнить` означает «не подтверждено», а не «нет». Не выдавай такую строку
+    за отсутствие возможности — скажи, что статус не подтверждён.
+    """
+    path = resolve_card(name, "products")
+    content = read_if_exists(path)
+    if content is None:
+        available = known_cards("products")
+        hint = "\n".join(f"- {p}" for p in available) if available else "(пусто)"
+        return f"Карточки функционала {name!r} нет. Что есть:\n{hint}"
     return content
 
 
