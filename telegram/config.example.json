@@ -1,0 +1,63 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.nanobot/workspace",
+      "model": "anthropic/claude-sonnet-5-5",
+      "provider": "anthropic",
+      "timezone": "Asia/Almaty",
+      "botName": "brain",
+      "botIcon": "🧠"
+    }
+  },
+
+  "providers": {
+    "anthropic": {
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    }
+  },
+
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "${TELEGRAM_BOT_TOKEN}",
+      "allow_from": ["${TELEGRAM_USER_ID}"],
+      "inline_keyboards": true
+    }
+  },
+
+  "transcription": {
+    "provider": "openai",
+    "language": "ru",
+    "apiKey": "${TRANSCRIPTION_API_KEY}"
+  },
+
+  "tools": {
+    "mcpServers": {
+      "brain": {
+        "command": "ПУТЬ/К/brain/.venv/bin/python",
+        "args": ["-m", "brain_mcp"],
+        "env": { "BRAIN_DIR": "ПУТЬ/К/brain/brain" },
+        "enabledTools": [
+          "whoami",
+          "list_projects",
+          "get_project",
+          "get_product",
+          "search_memory",
+          "save_note"
+        ]
+      },
+
+      "execution-hub": {
+        "url": "${EXECUTION_HUB_MCP_URL}",
+        "headers": { "Authorization": "Bearer ${EXECUTION_HUB_TOKEN}" },
+        "enabledTools": [
+          "list_my_tasks",
+          "list_tasks",
+          "get_task",
+          "list_projects",
+          "get_project_overview"
+        ]
+      }
+    }
+  }
+}
