@@ -49,7 +49,10 @@
           "get_product",
           "search_memory",
           "save_note",
-          "log_action"
+          "log_action",
+          "personal_tasks",
+          "add_personal_task",
+          "close_personal_task"
         ]
       },
 

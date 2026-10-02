@@ -39,6 +39,11 @@ MAX_REFERENCE_ENTRIES = 5
 # это не знание, а след действий, и читается он глазами при разборе «кто это
 # написал». Коммитится вместе со всем остальным.
 AUDIT_DIR_NAME = "audit"
+
+# Личные задачи лежат рядом с базой знаний, но не внутри неё: в brain/ их нашли
+# бы search_memory и whoami, а личному в рабочих ответах делать нечего.
+# Доступ только через свои инструменты.
+PERSONAL_TASKS_NAME = "personal/tasks.md"
 WRITE_KINDS = ("комментарий", "задача")
 
 
@@ -120,6 +125,43 @@ def reference_entries() -> list[tuple[str, str]]:
     if title is not None:
         entries.append((title, "\n".join(body).strip()))
     return entries
+
+
+def personal_tasks_file() -> Path:
+    return brain_dir().parent / PERSONAL_TASKS_NAME
+
+
+def parse_tasks(raw: str) -> tuple[list[dict[str, str]], list[str]]:
+    """Строки-задачи и всё остальное содержимое файла.
+
+    Задача — строка вида `- [ ] 2026-10-05 · текст`. Дата необязательна.
+    """
+    open_tasks: list[dict[str, str]] = []
+    done: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- [ ] "):
+            body = stripped[6:].strip()
+            due, _, rest = body.partition(" · ")
+            if len(due) == 10 and due.count("-") == 2:
+                open_tasks.append({"due": due, "text": rest.strip()})
+            else:
+                open_tasks.append({"due": "", "text": body})
+        elif stripped.startswith("- [x] "):
+            done.append(stripped[6:].strip())
+    return open_tasks, done
+
+
+def render_tasks(open_tasks: list[dict[str, str]], done: list[str]) -> str:
+    lines = ["# Личные задачи", "", "Не по работе. Рабочие — в Execution Hub.", "", "## Открытые", ""]
+    # Сначала со сроком по возрастанию, бессрочные в конец: дата сортируется
+    # как строка, потому что формат фиксированный.
+    for task in sorted(open_tasks, key=lambda x: x["due"] or "9999-99-99"):
+        prefix = f"{task['due']} · " if task["due"] else ""
+        lines.append(f"- [ ] {prefix}{task['text']}")
+    lines += ["", "## Сделано", ""]
+    lines += [f"- [x] {d}" for d in done]
+    return "\n".join(lines) + "\n"
 
 
 @mcp.tool()
@@ -284,6 +326,93 @@ def get_reference(query: str) -> str:
         return f"Слишком общий запрос, подошло {len(hits)} разделов:\n{titles}"
 
     return "\n\n".join(f"## {title}\n{body}" for title, body in hits)
+
+
+@mcp.tool()
+def personal_tasks(include_done: bool = False) -> str:
+    """Личные задачи пользователя — не по работе.
+
+    Рабочие задачи здесь не хранятся, они в Execution Hub. Не смешивай
+    эти списки в одном ответе без просьбы.
+    """
+    raw = read_if_exists(personal_tasks_file())
+    if raw is None:
+        return "Личных задач пока нет."
+
+    open_tasks, done = parse_tasks(raw)
+    if not open_tasks and not done:
+        return "Личных задач пока нет."
+
+    today = f"{date.today():%Y-%m-%d}"
+    lines = []
+    for task in sorted(open_tasks, key=lambda x: x["due"] or "9999-99-99"):
+        if not task["due"]:
+            lines.append(f"- {task['text']}")
+        elif task["due"] < today:
+            lines.append(f"- {task['text']} — просрочено, срок был {task['due']}")
+        elif task["due"] == today:
+            lines.append(f"- {task['text']} — сегодня")
+        else:
+            lines.append(f"- {task['text']} — {task['due']}")
+
+    out = "Открытые:\n" + ("\n".join(lines) if lines else "(пусто)")
+    if include_done and done:
+        out += "\n\nСделано:\n" + "\n".join(f"- {d}" for d in done)
+    return out
+
+
+@mcp.tool()
+def add_personal_task(text: str, due: str = "") -> str:
+    """Добавить личную задачу.
+
+    text: что сделать, своими словами.
+    due: срок в виде ГГГГ-ММ-ДД, если назван. Не выдумывай его — нет срока,
+    оставь пустым.
+
+    Это не напоминание: задача лежит в списке и ждёт, пока её не спросят.
+    Чтобы пришло уведомление в нужное время, нужен отдельный будильник.
+    """
+    if not text.strip():
+        return "Пустую задачу не добавлю."
+    if due:
+        try:
+            datetime.strptime(due, "%Y-%m-%d")
+        except ValueError:
+            return f"Срок должен быть в виде ГГГГ-ММ-ДД. Получено: {due!r}"
+
+    path = personal_tasks_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = read_if_exists(path) or ""
+    open_tasks, done = parse_tasks(raw)
+    open_tasks.append({"due": due, "text": text.strip()})
+    path.write_text(render_tasks(open_tasks, done), encoding="utf-8")
+
+    return f"Добавлено: {text.strip()}" + (f" (срок {due})" if due else "")
+
+
+@mcp.tool()
+def close_personal_task(text: str) -> str:
+    """Закрыть личную задачу. Достаточно части текста, если она узнаётся однозначно."""
+    path = personal_tasks_file()
+    raw = read_if_exists(path)
+    if raw is None:
+        return "Личных задач пока нет."
+
+    open_tasks, done = parse_tasks(raw)
+    needle = text.strip().lower()
+    hits = [t for t in open_tasks if needle in t["text"].lower()]
+
+    if not hits:
+        return f"Не нашёл задачу по {text!r}."
+    if len(hits) > 1:
+        listed = "\n".join(f"- {t['text']}" for t in hits)
+        return f"Подходит несколько, уточни какая:\n{listed}"
+
+    task = hits[0]
+    open_tasks.remove(task)
+    closed = f"{date.today():%Y-%m-%d} · {task['text']}"
+    path.write_text(render_tasks(open_tasks, [closed] + done), encoding="utf-8")
+    return f"Закрыто: {task['text']}"
 
 
 @mcp.tool()
