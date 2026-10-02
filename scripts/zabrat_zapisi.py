@@ -224,14 +224,20 @@ def main() -> None:
             print(f"{name}: не скачался — {copied.stderr.strip()}", file=sys.stderr)
             continue
 
-        duration = probe_duration(local) or 0.0
+        duration = probe_duration(local)
         # Короткое — голосовая заметка, бот ответил на неё сам. Отмечаем и уходим,
         # чтобы не присылать документ на каждое «запиши, что…».
-        if duration < min_minutes * 60:
+        if duration is not None and duration < min_minutes * 60:
             done.add(name)
             ledger.write_text("\n".join(sorted(done)) + "\n")
             local.unlink(missing_ok=True)
             continue
+        if duration is None:
+            # Нет ffmpeg или битый файл. Пропустить молча нельзя: так встреча
+            # уедет в «сделано» и больше не вернётся. Лучше расшифровать зря.
+            print(f"{name}: длительность не определилась, расшифровываю без проверки",
+                  file=sys.stderr)
+            duration = 0.0
 
         stamp = datetime.fromtimestamp(mtime)
         telegram(config, "sendMessage", [

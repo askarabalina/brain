@@ -50,6 +50,20 @@ description: Превращает запись встречи или разго�
 заменён на `mlx-whisper`: считает через Metal и нейродвижок, а разделение
 по говорящим, пословные метки и определение речи сохранены.
 
+Живёт в отдельном окружении `~/.venvs/audio`, не в `.venv` репозитория:
+за ним тянется torch на несколько гигабайт, которому в окружении базы знаний
+делать нечего. Ставится так (нужен Python 3.10–3.13):
+
+```bash
+BASE=$(.venv/bin/python -c "import sys,os; print(os.path.join(sys.base_prefix,'bin','python3'))")
+$BASE -m venv ~/.venvs/audio
+~/.venvs/audio/bin/pip install -U pip whispermlx
+```
+
+Полный путь к команде — `~/.venvs/audio/bin/whispermlx`, он же идёт
+в `WHISPERMLX=` в настройках `zabrat_zapisi.py`. По имени она не найдётся:
+в общий PATH окружение себя не прописывает, и это правильно.
+
 ```bash
 whispermlx подготовленный.ogg \
   --language ru \
