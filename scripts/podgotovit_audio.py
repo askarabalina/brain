@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -26,18 +27,33 @@ TARGET_RATE = 16000
 
 
 def probe_duration(path: Path) -> float | None:
-    """Длительность в секундах. None, если ffprobe не смог разобрать файл."""
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", str(path)],
-        capture_output=True, text=True, timeout=120,
-    )
-    if result.returncode != 0:
-        return None
+    """Длительность в секундах. None, если формат не разобрался.
+
+    Пробуем ffprobe, а если его нет — достаём из вывода самого ffmpeg.
+    Отдельный ffprobe есть не везде: сборки, которые ставятся как пакет
+    Python, обычно содержат только ffmpeg.
+    """
     try:
-        return float(json.loads(result.stdout)["format"]["duration"])
-    except (KeyError, ValueError, json.JSONDecodeError):
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0:
+            return float(json.loads(result.stdout)["format"]["duration"])
+    except (FileNotFoundError, KeyError, ValueError, json.JSONDecodeError):
+        pass
+
+    # ffmpeg без выходного файла завершается с ошибкой, но до этого печатает
+    # сведения о входе — оттуда и берём «Duration: 00:12:34.56».
+    result = subprocess.run(
+        ["ffmpeg", "-i", str(path)], capture_output=True, text=True, timeout=120,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)", result.stderr)
+    if not match:
         return None
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
 def human_time(seconds: float) -> str:
@@ -79,7 +95,7 @@ def main() -> None:
 
     duration = probe_duration(args.source)
     if duration is None:
-        sys.exit(f"{args.source.name}: ffprobe не распознал формат — это точно запись?")
+        sys.exit(f"{args.source.name}: формат не распознан — это точно аудио или видео?")
 
     target = args.out or args.source.with_suffix(".ogg")
     print(f"Исходник:  {args.source.name}, {human_time(duration)}, "
