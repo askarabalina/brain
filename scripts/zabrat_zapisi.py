@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -46,7 +47,15 @@ REMOTE_MEDIA = ".nanobot/media/telegram"
 # рядом, исходник уезжает в «готово». Нужен для разговоров, которым нечего
 # делать на чужих серверах: через бот запись и текст дважды проходят телеграм.
 LOCAL_IN = "расшифровать"
+# Вторая папка для того, чему нельзя наружу: расшифровка делается, протокол —
+# нет, потому что протокол пишет облачная модель. Выбор папкой, а не флагом:
+# видно глазами в Finder, не надо ничего помнить.
+LOCAL_IN_OFFLINE = "расшифровать-без-облака"
 LOCAL_DONE = "готово"
+
+# Готовая расшифровка — из Teams или откуда угодно. Распознавать нечего,
+# сразу в протокол.
+TEXT_EXT = {".txt", ".md", ".srt", ".vtt", ".docx"}
 
 # Файл, который ещё копируется, трогать рано: AirDrop и перетаскивание
 # крупной записи занимают секунды, а размер всё это время растёт.
@@ -227,6 +236,59 @@ def transcribe(audio: Path, work_dir: Path, config: dict[str, str]) -> Path | No
     return produced
 
 
+def read_transcript(path: Path) -> str | None:
+    """Готовая расшифровка в текст. Понимает выгрузку Teams и файлы субтитров.
+
+    Всё локально: ничего никуда не отправляется, файл только читается.
+    """
+    suffix = path.suffix.lower()
+    if suffix == ".docx":
+        try:
+            from v_tekst import from_docx
+            return from_docx(path)
+        except Exception as exc:
+            print(f"{path.name}: не прочитался — {exc}", file=sys.stderr)
+            return None
+
+    text = path.read_text(errors="replace")
+    if suffix in (".srt", ".vtt"):
+        text = subtitles_to_text(text)
+    return text or None
+
+
+def subtitles_to_text(raw: str) -> str:
+    """Субтитры в читаемые реплики.
+
+    Номера и таймкоды выбрасываем. Teams подписывает говорящего тегом
+    <v Имя> — это настоящие имена из учёток, ради них весь путь через Teams
+    и предпочтителен, терять их нельзя. Соседние реплики одного человека
+    склеиваем, иначе получится лестница из обрывков по три слова.
+    """
+    blocks: list[tuple[str | None, list[str]]] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if (not line or "-->" in line or line.isdigit() or line == "WEBVTT"
+                or line.startswith(("NOTE", "STYLE"))):
+            continue
+
+        who: str | None = None
+        if match := re.match(r"<v\s+([^>]+)>(.*)", line):
+            who, line = match.group(1).strip(), match.group(2).strip()
+        line = re.sub(r"</?[a-zA-Z][^>]*>", "", line).strip()
+        if not line:
+            continue
+
+        if blocks and blocks[-1][0] == who:
+            blocks[-1][1].append(line)
+        else:
+            blocks.append((who, [line]))
+
+    return "\n\n".join(
+        f"**{who}:** {' '.join(parts)}" if who else " ".join(parts)
+        for who, parts in blocks
+    )
+
+
 def process_local(work_dir: Path, config: dict[str, str], dry_run: bool) -> None:
     """Расшифровать то, что положили в папку руками. Телеграм не участвует."""
     inbox = work_dir / LOCAL_IN
@@ -235,7 +297,7 @@ def process_local(work_dir: Path, config: dict[str, str], dry_run: bool) -> None
     pending = [
         item for item in sorted(inbox.iterdir())
         if item.is_file()
-        and item.suffix.lower() in AUDIO_EXT
+        and item.suffix.lower() in AUDIO_EXT | TEXT_EXT
         and time.time() - item.stat().st_mtime > SETTLE_SECONDS
     ]
     if dry_run:
@@ -246,18 +308,33 @@ def process_local(work_dir: Path, config: dict[str, str], dry_run: bool) -> None
     done_dir = work_dir / LOCAL_DONE
     done_dir.mkdir(parents=True, exist_ok=True)
 
-    for audio in pending:
-        duration = probe_duration(audio) or 0.0
-        produced = transcribe(audio, work_dir, config)
-        if produced is None:
-            notify("Расшифровка не удалась", audio.name)
-            continue
+    for source in pending:
+        document = work_dir / f"расшифровка-{source.stem}.md"
 
-        document = work_dir / f"расшифровка-{audio.stem}.md"
-        document.write_text(build_document(segments_from_json(produced), audio.name, duration))
+        if source.suffix.lower() in TEXT_EXT:
+            # Расшифровка уже готова — из Teams или другого источника.
+            # Распознавать нечего, приводим к нашему виду и кладём рядом.
+            text = read_transcript(source)
+            if text is None:
+                notify("Файл не прочитался", source.name)
+                continue
+            document.write_text(
+                f"# Расшифровка · {datetime.now():%d.%m.%Y}\n\n"
+                f"**Источник:** {source.name} (готовая расшифровка, не распознавание)\n\n"
+                f"---\n\n{text}\n"
+            )
+        else:
+            duration = probe_duration(source) or 0.0
+            produced = transcribe(source, work_dir, config)
+            if produced is None:
+                notify("Расшифровка не удалась", source.name)
+                continue
+            document.write_text(
+                build_document(segments_from_json(produced), source.name, duration))
+
         # Исходник убираем из входящей папки, иначе следующий запуск
         # возьмёт его снова.
-        audio.replace(done_dir / audio.name)
+        source.replace(done_dir / source.name)
         notify("Расшифровка готова", document.name)
         print(f"готово: {document}")
 
