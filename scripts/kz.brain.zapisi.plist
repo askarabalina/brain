@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Расписание для scripts/zabrat_zapisi.py на маке.
+
+  Кладётся в ~/Library/LaunchAgents/kz.brain.zapisi.plist, ПУТЬ/К/brain
+  заменяется на настоящий, дальше:
+
+      launchctl load ~/Library/LaunchAgents/kz.brain.zapisi.plist
+
+  Запускается раз в десять минут. Пока ноутбук спит, запуски не происходят —
+  он нагонит один раз при пробуждении, а не десять подряд.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>kz.brain.zapisi</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>ПУТЬ/К/brain/scripts/zabrat_zapisi.py</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>600</integer>
+
+  <!-- У launchd свой урезанный PATH: homebrew и питонные окружения в него
+       не входят. Без этой строки не найдётся ни ffmpeg, ни whispermlx. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Журнал: сюда смотреть, если документ не пришёл. -->
+  <key>StandardOutPath</key>
+  <string>/tmp/zapisi.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/zapisi.log</string>
+</dict>
+</plist>
