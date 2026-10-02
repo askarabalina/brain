@@ -94,6 +94,27 @@ claude mcp add --scope user --transport http execution-hub <URL> \
 или `ручной ввод`. Без него запись не сохраняется: через полгода невозможно
 понять, чему верить, если не видно, откуда факт взялся.
 
+## Навыки и субагенты
+
+Лежат в репозитории, чтобы версионироваться вместе с базой, а клиенты читают
+их из домашней папки. Связываются симлинками — правишь в репозитории, работает
+везде:
+
+```bash
+mkdir -p ~/.claude/skills ~/.claude/agents
+ln -s "$(pwd)/skills/razbor-ts"      ~/.claude/skills/razbor-ts
+ln -s "$(pwd)/skills/snimok-zadach"  ~/.claude/skills/snimok-zadach
+ln -s "$(pwd)/agents/protokol-vstrechi.md" ~/.claude/agents/protokol-vstrechi.md
+```
+
+| Что | Зачем |
+|---|---|
+| `skills/razbor-ts` | разбор ТС закупки на требования, со сведением по всем закупкам |
+| `skills/snimok-zadach` | офлайн-копия состояния задач в `snapshots/` |
+| `agents/protokol-vstrechi` | протокол из транскрипта встречи; без доступа в Hub и в базу |
+
+После добавления симлинков клиент нужно перезапустить.
+
 ## Структура базы
 
 ```
