@@ -6,7 +6,10 @@
       "provider": "anthropic",
       "timezone": "Asia/Almaty",
       "botName": "brain",
-      "botIcon": "🧠"
+      "botIcon": "🧠",
+
+      "_комментарий_dream": "Dream выключен намеренно. Он переписывает SOUL.md, где лежат правила записи во внешние системы, и завёл бы вторую память параллельно brain/ — а источник правды должен быть один.",
+      "dream": { "enabled": false }
     }
   },
 
@@ -37,25 +40,32 @@
         "command": "ПУТЬ/К/brain/.venv/bin/python",
         "args": ["-m", "brain_mcp"],
         "env": { "BRAIN_DIR": "ПУТЬ/К/brain/brain" },
+
+        "_комментарий": "get_reference не включён: справочник личных данных в телеграм не уходит.",
         "enabledTools": [
           "whoami",
           "list_projects",
           "get_project",
           "get_product",
           "search_memory",
-          "save_note"
+          "save_note",
+          "log_action"
         ]
       },
 
       "execution-hub": {
         "url": "${EXECUTION_HUB_MCP_URL}",
         "headers": { "Authorization": "Bearer ${EXECUTION_HUB_TOKEN}" },
+
+        "_комментарий": "Запись ограничена комментарием и созданием задачи. Смена статусов, сроков и удаление сюда не входят намеренно: их последствия видит вся команда, а откатить сложнее. Этот список — настоящая граница, в отличие от правил в SOUL.md.",
         "enabledTools": [
           "list_my_tasks",
           "list_tasks",
           "get_task",
           "list_projects",
-          "get_project_overview"
+          "get_project_overview",
+          "add_task_comment",
+          "create_task"
         ]
       }
     }

@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -34,6 +34,12 @@ SNIPPET_LINES = 3
 # сессии через whoami. Из истории git значение уже не вычистить.
 DEFAULT_REFERENCE = Path.home() / ".brain-private" / "reference.md"
 MAX_REFERENCE_ENTRIES = 5
+
+# Журнал записей во внешние системы. Лежит рядом с базой, но не в ней:
+# это не знание, а след действий, и читается он глазами при разборе «кто это
+# написал». Коммитится вместе со всем остальным.
+AUDIT_DIR_NAME = "audit"
+WRITE_KINDS = ("комментарий", "задача")
 
 
 def brain_dir() -> Path:
@@ -278,6 +284,48 @@ def get_reference(query: str) -> str:
         return f"Слишком общий запрос, подошло {len(hits)} разделов:\n{titles}"
 
     return "\n\n".join(f"## {title}\n{body}" for title, body in hits)
+
+
+@mcp.tool()
+def log_action(kind: str, target: str, text: str, channel: str = "телеграм") -> str:
+    """Записать в журнал то, что было отправлено во внешнюю систему.
+
+    Вызывать СРАЗУ ПОСЛЕ успешной записи в Execution Hub — комментария к задаче
+    или созданной задачи. Не вместо записи и не до неё.
+
+    kind: "комментарий" или "задача".
+    target: задача или проект, к которым это относится — с названием, не только id.
+    text: что было отправлено, дословно.
+    channel: откуда пришло действие.
+
+    Журнал нужен, чтобы человек мог потом увидеть всё, что ушло наружу с его
+    имени, и проверить. Не приукрашивай текст и не сокращай его.
+    """
+    if kind not in WRITE_KINDS:
+        return f"kind должен быть одним из: {', '.join(WRITE_KINDS)}. Получено: {kind!r}"
+    if not target.strip() or not text.strip():
+        return "Нужны и цель, и отправленный текст."
+
+    now = datetime.now()
+    path = brain_dir().parent / AUDIT_DIR_NAME / f"{now:%Y-%m}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(
+            f"# Записи во внешние системы · {now:%Y-%m}\n\n"
+            "Что ушло наружу и откуда. Пополняется автоматически.\n",
+            encoding="utf-8",
+        )
+
+    entry = (
+        f"\n## {now:%Y-%m-%d %H:%M} · {kind}\n\n"
+        f"**Куда:** {target.strip()}  \n"
+        f"**Откуда:** {channel.strip()}\n\n"
+        f"> {text.strip().replace(chr(10), chr(10) + '> ')}\n"
+    )
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(entry)
+
+    return f"Записано в {path.relative_to(brain_dir().parent)}."
 
 
 @mcp.tool()
