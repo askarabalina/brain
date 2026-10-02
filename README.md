@@ -102,15 +102,18 @@ claude mcp add --scope user --transport http execution-hub <URL> \
 
 ```bash
 mkdir -p ~/.claude/skills ~/.claude/agents
-ln -s "$(pwd)/skills/razbor-ts"      ~/.claude/skills/razbor-ts
-ln -s "$(pwd)/skills/snimok-zadach"  ~/.claude/skills/snimok-zadach
-ln -s "$(pwd)/agents/protokol-vstrechi.md" ~/.claude/agents/protokol-vstrechi.md
+for s in skills/*/; do ln -sfn "$(pwd)/$s" ~/.claude/skills/"$(basename "$s")"; done
+ln -sfn "$(pwd)/agents/protokol-vstrechi.md" ~/.claude/agents/protokol-vstrechi.md
 ```
 
 | Что | Зачем |
 |---|---|
 | `skills/razbor-ts` | разбор ТС закупки на требования, со сведением по всем закупкам |
 | `skills/snimok-zadach` | офлайн-копия состояния задач в `snapshots/` |
+| `skills/obnovit-funktsional` | обновление карточки функционала продукта |
+| `skills/zapolnit-bazu` | заполнение пустых мест в базе разговором, не анкетой |
+| `skills/otchet-razrabotki` | сводка по разработке из GitHub за период |
+| `skills/proverit-reshenie` | пять способов найти дыры в плане или документе до запуска |
 | `agents/protokol-vstrechi` | протокол из транскрипта встречи; без доступа в Hub и в базу |
 
 После добавления симлинков клиент нужно перезапустить.
@@ -234,6 +237,9 @@ brain/
 - правила опроса в `CLAUDE.md` и навыке `zapolnit-bazu` — из `bmad-project-context`,
   шаг «Interview the gaps»
 - реестр изменений при обновлении карточки — оттуда же
+- короткое меню методов с остановкой на подтверждение в `proverit-reshenie` —
+  из `bmad-advanced-elicitation`; сами методы отобраны и переписаны под задачи
+  руководителя разработки, каталог из 71 пункта целиком не переносился
 
 Сам метод не заимствован: он про то, как вести разработку от идеи до кода
 через агентов-ролей, а здесь роли заняты живыми людьми. Названия BMad —
