@@ -5,6 +5,9 @@
 
 Задачи здесь намеренно не хранятся — источник правды по ним Execution Hub,
 который подключается отдельным MCP-сервером.
+
+Справочник личных данных (`get_reference`) лежит вне репозитория и вне
+`brain/`: он не версионируется и не попадает в контекст сессии сам по себе.
 """
 
 from __future__ import annotations
@@ -25,6 +28,12 @@ SOURCES = ("встреча", "чат", "сессия", "ручной ввод")
 
 MAX_RESULTS = 40
 SNIPPET_LINES = 3
+
+# Справочник личных данных: отдельный файл за пределами репозитория.
+# Умышленно не `brain/`: туда он попал бы и в git-историю, и в контекст каждой
+# сессии через whoami. Из истории git значение уже не вычистить.
+DEFAULT_REFERENCE = Path.home() / ".brain-private" / "reference.md"
+MAX_REFERENCE_ENTRIES = 5
 
 
 def brain_dir() -> Path:
@@ -68,6 +77,35 @@ def read_if_exists(path: Path) -> str | None:
         return path.read_text(encoding="utf-8")
     except (FileNotFoundError, NotADirectoryError):
         return None
+
+
+def reference_file() -> Path:
+    """Файл справочника: переменная BRAIN_REFERENCE либо ~/.brain-private/reference.md."""
+    env = os.environ.get("BRAIN_REFERENCE")
+    path = Path(env).expanduser() if env else DEFAULT_REFERENCE
+    return path.resolve()
+
+
+def reference_entries() -> list[tuple[str, str]]:
+    """Справочник как пары «заголовок, тело». Разделы задаются строками `## `."""
+    path = reference_file()
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+    entries: list[tuple[str, str]] = []
+    title, body = None, []
+    for line in raw.splitlines():
+        if line.startswith("## "):
+            if title is not None:
+                entries.append((title, "\n".join(body).strip()))
+            title, body = line[3:].strip(), []
+        elif title is not None:
+            body.append(line)
+    if title is not None:
+        entries.append((title, "\n".join(body).strip()))
+    return entries
 
 
 @mcp.tool()
@@ -153,6 +191,53 @@ def search_memory(query: str, project: str | None = None) -> str:
     if len(lines) > MAX_RESULTS:
         out += f"\n\n… ещё {len(lines) - MAX_RESULTS} строк, уточни запрос."
     return out
+
+
+@mcp.tool()
+def get_reference(query: str) -> str:
+    """Личные справочные данные: серийные номера, лицензии, тарифы, документы.
+
+    Вызывать ТОЛЬКО когда пользователь прямо спрашивает конкретное значение.
+    Не вызывать «на всякий случай» и не для общего знакомства с пользователем —
+    для этого есть whoami.
+
+    Возвращает только совпавшие разделы, не файл целиком. Найденные значения
+    не переноси в базу знаний, не повторяй в итогах сессии и не упоминай
+    в последующих ответах без нового вопроса.
+    """
+    path = reference_file()
+
+    # Справочник внутри репозитория — это ошибка настройки: он уедет в git.
+    repo = brain_dir().parent
+    if path.is_relative_to(repo):
+        return (
+            f"Справочник лежит внутри репозитория ({path}) — так он попадёт в git "
+            "и останется в истории навсегда. Перенеси его наружу, например "
+            "в ~/.brain-private/reference.md, или задай путь в BRAIN_REFERENCE."
+        )
+
+    entries = reference_entries()
+    if not entries:
+        return (
+            f"Справочник пуст или отсутствует: {path}. "
+            "Создай файл, разделы задаются строками вида `## Ноутбук`."
+        )
+
+    needle = query.strip().lower()
+    if not needle:
+        titles = "\n".join(f"- {title}" for title, _ in entries)
+        return f"Что именно нужно? Разделы справочника:\n{titles}"
+
+    hits = [(ti, bo) for ti, bo in entries if needle in ti.lower() or needle in bo.lower()]
+    if not hits:
+        titles = "\n".join(f"- {title}" for title, _ in entries)
+        return f"По запросу {query!r} ничего нет. Разделы справочника:\n{titles}"
+
+    if len(hits) > MAX_REFERENCE_ENTRIES:
+        titles = "\n".join(f"- {title}" for title, _ in hits)
+        return f"Слишком общий запрос, подошло {len(hits)} разделов:\n{titles}"
+
+    return "\n\n".join(f"## {title}\n{body}" for title, body in hits)
 
 
 @mcp.tool()
