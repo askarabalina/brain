@@ -6,13 +6,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=bot
-Group=bot
-WorkingDirectory=/home/bot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
 
 # Секреты: только здесь, права 600, в git не попадают.
-EnvironmentFile=/home/bot/.nanobot/env
-ExecStart=/home/bot/nanobot/.venv/bin/nanobot gateway --config /home/bot/.nanobot/config.json
+EnvironmentFile=/home/ubuntu/.nanobot/env
+ExecStart=/home/ubuntu/nanobot-venv/bin/nanobot gateway --config /home/ubuntu/.nanobot/config.json
 
 Restart=always
 RestartSec=10
@@ -25,7 +25,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/bot/.nanobot /home/bot/brain
+# Писать можно только в конфиг с рабочей папкой и в базу знаний.
+ReadWritePaths=/home/ubuntu/.nanobot /home/ubuntu/brain
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
