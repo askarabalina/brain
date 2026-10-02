@@ -6,7 +6,9 @@ source: execution-hub
 # Профиль
 
 - **Имя:** Aidana Karabalina
-- **Должность:** руководитель отдела разработки MSSP Group (юридически — ТОО «CLOUDTEK»)
+- **Должность:** руководитель отдела разработки MSSP Group
+- **Юридически оформлена:** ТОО «CLOUDTEK» — компания группы, не отдельный работодатель
+- **Группа компаний:** MSSP Group — MSSP.GL, SafeZone, CloudTek
 - **Компания:** KazDream
 - **Воркспейсы:** MSSP Global, Shared MSSP
 - **Часовой пояс:** Asia/Almaty
