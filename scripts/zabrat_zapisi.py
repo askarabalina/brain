@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -63,6 +64,21 @@ def load_config() -> dict[str, str]:
         if not config.get(required):
             sys.exit(f"в {CONFIG_PATH} не заполнено: {required}")
     return config
+
+
+def extend_path(config: dict[str, str]) -> None:
+    """Добавить в PATH то, что ставится в домашнюю папку.
+
+    launchd запускает скрипт с голым системным PATH: ни ffmpeg, ни whispermlx,
+    поставленные через uv или pip --user, туда не входят. Руками из терминала
+    всё работает, по расписанию — нет, и это самая неочевидная поломка
+    во всей цепочке.
+    """
+    extra = [str(Path.home() / ".local" / "bin")]
+    if whisper := config.get("WHISPERMLX"):
+        extra.append(str(Path(whisper).expanduser().parent))
+    current = os.environ.get("PATH", "")
+    os.environ["PATH"] = os.pathsep.join(dict.fromkeys(extra + current.split(os.pathsep)))
 
 
 def telegram(config: dict[str, str], method: str, fields: list[tuple[str, str]]) -> bool:
@@ -195,6 +211,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config()
+    extend_path(config)
     work_dir = Path(config.get("ZAPISI_DIR", "~/Записи")).expanduser()
     work_dir.mkdir(parents=True, exist_ok=True)
     ledger = work_dir / ".сделано"
