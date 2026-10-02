@@ -10,8 +10,11 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
 
-# Секреты: только здесь, права 600, в git не попадают.
-EnvironmentFile=/home/ubuntu/.nanobot/env
+# Секреты. Лежат в /etc и принадлежат root: systemd читает файл до того,
+# как сбросит права на ubuntu, а сам бот прочитать его уже не может.
+# В домашней папке он был бы боту доступен — у встроенного инструмента
+# чтения файлов нет границы по папкам, вопреки названию restrict_to_workspace.
+EnvironmentFile=/etc/nanobot.env
 ExecStart=/home/ubuntu/nanobot-venv/bin/nanobot gateway --config /home/ubuntu/.nanobot/config.json
 
 Restart=always

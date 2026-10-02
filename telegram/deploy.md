@@ -118,9 +118,16 @@ cp ~/brain/telegram/SOUL.example.md ~/.nanobot/workspace/SOUL.md
 **Без `SOUL.md` бот будет писать в Hub без черновика и без журнала.** Это самый
 легко теряющийся шаг.
 
+Секреты кладём в `/etc`, а не в домашнюю папку, и владельцем ставим root.
+systemd читает файл до того, как сбрасывает права на `ubuntu`, поэтому служба
+его видит, а сам бот — нет. Это важно: встроенный инструмент чтения файлов
+никакой границей по папкам не ограничен, и из домашней папки бот прочитал бы
+собственные ключи по первой же просьбе.
+
 ```bash
-touch ~/.nanobot/env && chmod 600 ~/.nanobot/env
-nano ~/.nanobot/env
+sudo touch /etc/nanobot.env
+sudo chown root:root /etc/nanobot.env && sudo chmod 600 /etc/nanobot.env
+sudo nano /etc/nanobot.env
 ```
 
 Значения — свои, по одному на строку. Сохранить: Ctrl+O, Enter, Ctrl+X.
@@ -147,7 +154,7 @@ to new users». Проверяй в консоли провайдера, а не
 ## Проверка до службы
 
 ```bash
-set -a && . ~/.nanobot/env && set +a
+set -a && . <(sudo cat /etc/nanobot.env) && set +a
 ~/nanobot-venv/bin/nanobot status --config ~/.nanobot/config.json
 ```
 
@@ -212,4 +219,5 @@ systemctl restart nanobot
   В конфиге бота `get_reference` и так не зарегистрирован.
 - **Расшифровки записей.** Она считается на ноутбуке: на виртуалке без
   ускорителя это часы.
-- **Ключей в git.** Секреты только в `~/.nanobot/env` с правами 600.
+- **Ключей в git.** Секреты только в `/etc/nanobot.env`, владелец root,
+  права 600. Боту они недоступны даже на чтение.
