@@ -1,0 +1,39 @@
+[Unit]
+Description=Телеграм-бот над базой знаний (nanobot)
+Documentation=https://github.com/askarabalina/brain/blob/main/telegram/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bot
+Group=bot
+WorkingDirectory=/home/bot
+
+# Секреты: только здесь, права 600, в git не попадают.
+EnvironmentFile=/home/bot/.nanobot/env
+ExecStart=/home/bot/nanobot/.venv/bin/nanobot gateway --config /home/bot/.nanobot/config.json
+
+Restart=always
+RestartSec=10
+# Падает по кругу — systemd сдаётся и не крутит перезапуск вечно.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Бот ходит только наружу, входящих не принимает: лишние права ему не нужны.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/bot/.nanobot /home/bot/brain
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
