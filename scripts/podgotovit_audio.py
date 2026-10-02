@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,9 +47,14 @@ def probe_duration(path: Path) -> float | None:
 
     # ffmpeg без выходного файла завершается с ошибкой, но до этого печатает
     # сведения о входе — оттуда и берём «Duration: 00:12:34.56».
-    result = subprocess.run(
-        ["ffmpeg", "-i", str(path)], capture_output=True, text=True, timeout=120,
-    )
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-i", str(path)], capture_output=True, text=True, timeout=120,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Самого ffmpeg нет. Это «не знаю длительность», а не повод падать:
+        # вызывающий решает, что с этим делать.
+        return None
     match = re.search(r"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)", result.stderr)
     if not match:
         return None
@@ -92,6 +98,10 @@ def main() -> None:
 
     if not args.source.is_file():
         sys.exit(f"нет файла: {args.source}")
+
+    if shutil.which("ffmpeg") is None:
+        sys.exit("не найден ffmpeg. Он нужен и для подготовки, и для расшифровки.\n"
+                 "Если он стоял в ~/.local/bin — проверь PATH.")
 
     duration = probe_duration(args.source)
     if duration is None:
